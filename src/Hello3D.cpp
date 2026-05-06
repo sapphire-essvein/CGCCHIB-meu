@@ -24,7 +24,7 @@ using namespace std;
 #include <glm/gtc/type_ptr.hpp>
 
 
-// Protótipo da função de callback de teclado
+// Protótipo da função de ca lback de teclado
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
 
 // Protótipos das funções
