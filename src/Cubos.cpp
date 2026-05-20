@@ -12,6 +12,8 @@ using namespace std;
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
 
@@ -23,20 +25,25 @@ const GLuint WIDTH = 1000, HEIGHT = 1000;
 const GLchar* vertexShaderSource = "#version 450\n"
 "layout (location = 0) in vec3 position;\n"
 "layout (location = 1) in vec3 color;\n"
+"layout (location = 2) in vec2 texCoord;\n"
 "uniform mat4 model;\n"
 "out vec4 finalColor;\n"
+"out vec2 TexCoord;\n"
 "void main()\n"
 "{\n"
 "gl_Position = model * vec4(position, 1.0);\n"
 "finalColor = vec4(color, 1.0);\n"
+"TexCoord = texCoord;\n"
 "}\0";
 
 const GLchar* fragmentShaderSource = "#version 450\n"
 "in vec4 finalColor;\n"
+"in vec2 TexCoord;\n"
+"uniform sampler2D texture1;\n"
 "out vec4 color;\n"
 "void main()\n"
 "{\n"
-"color = finalColor;\n"
+"color = texture(texture1, TexCoord) * finalColor;\n"
 "}\n\0";
 
 bool rotateX=false, rotateY=false, rotateZ=false;
@@ -65,6 +72,51 @@ int main()
 
 	}
 
+	GLuint texture;
+	glGenTextures(1, &texture);
+	glBindTexture(GL_TEXTURE_2D, texture);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+	int texWidth, texHeight, nrChannels;
+
+	stbi_set_flip_vertically_on_load(true);
+
+	unsigned char* data = stbi_load(
+		"brick.jpg",
+		&texWidth,
+		&texHeight,
+		&nrChannels,
+		0
+	);
+
+	if (data)
+	{
+		glTexImage2D(
+			GL_TEXTURE_2D,
+			0,
+			GL_RGB,
+			texWidth,
+			texHeight,
+			0,
+			GL_RGB,
+			GL_UNSIGNED_BYTE,
+			data
+		);
+
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
+	else
+	{
+		std::cout << "Erro ao carregar textura!" << std::endl;
+	}
+
+	stbi_image_free(data);
+
 	const GLubyte* renderer = glGetString(GL_RENDERER);
 	const GLubyte* version = glGetString(GL_VERSION);
 	cout << "Renderer: " << renderer << endl;
@@ -79,6 +131,7 @@ int main()
 	GLuint VAO = setupGeometry();
 
 	glUseProgram(shaderID);
+	glUniform1i(glGetUniformLocation(shaderID, "texture1"), 0);
 
 	glm::mat4 model = glm::mat4(1); 
 	GLint modelLoc = glGetUniformLocation(shaderID, "model");
@@ -117,11 +170,13 @@ int main()
 
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, texture);
+
             glBindVertexArray(VAO);
             glDrawArrays(GL_TRIANGLES, 0, 36);
         }
 		
-		glDrawArrays(GL_POINTS, 0, 36);
 		glBindVertexArray(0);
 
 		glfwSwapBuffers(window);
@@ -217,53 +272,53 @@ int setupGeometry()
 {
 	GLfloat vertices[] = {
 
-    -0.5,-0.5, 0.5, 1,0,0,
-     0.5,-0.5, 0.5, 1,0,0,
-     0.5, 0.5, 0.5, 1,0,0,
+    -0.5,-0.5, 0.5, 1,0,0, 0.0f, 0.0f,
+ 	0.5,-0.5, 0.5, 1,0,0, 1.0f, 0.0f,
+ 	0.5, 0.5, 0.5, 1,0,0, 1.0f, 1.0f,
 
-    -0.5,-0.5, 0.5, 1,0,0,
-     0.5, 0.5, 0.5, 1,0,0,
-    -0.5, 0.5, 0.5, 1,0,0,
+    -0.5,-0.5, 0.5, 1,0,0, 0.0f, 0.0f,
+	0.5, 0.5, 0.5, 1,0,0, 1.0f, 1.0f,
+	-0.5, 0.5, 0.5, 1,0,0, 0.0f, 1.0f,
 
-    -0.5,-0.5,-0.5, 0,1,0,
-     0.5, 0.5,-0.5, 0,1,0,
-     0.5,-0.5,-0.5, 0,1,0,
+	-0.5,-0.5,-0.5, 0,1,0, 0.0f, 0.0f,
+	0.5, 0.5,-0.5, 0,1,0, 1.0f, 1.0f,
+	0.5,-0.5,-0.5, 0,1,0, 1.0f, 0.0f,
 
-    -0.5,-0.5,-0.5, 0,1,0,
-    -0.5, 0.5,-0.5, 0,1,0,
-     0.5, 0.5,-0.5, 0,1,0,
+	-0.5,-0.5,-0.5, 0,1,0, 0.0f, 0.0f,
+	-0.5, 0.5,-0.5, 0,1,0, 0.0f, 1.0f,
+	0.5, 0.5,-0.5, 0,1,0, 1.0f, 1.0f,
 
-    -0.5,-0.5,-0.5, 0,0,1,
-    -0.5,-0.5, 0.5, 0,0,1,
-    -0.5, 0.5, 0.5, 0,0,1,
+	-0.5,-0.5,-0.5, 0,0,1, 0.0f, 0.0f,
+	-0.5,-0.5, 0.5, 0,0,1, 1.0f, 0.0f,
+	-0.5, 0.5, 0.5, 0,0,1, 1.0f, 1.0f,
 
-    -0.5,-0.5,-0.5, 0,0,1,
-    -0.5, 0.5, 0.5, 0,0,1,
-    -0.5, 0.5,-0.5, 0,0,1,
+	-0.5,-0.5,-0.5, 0,0,1, 0.0f, 0.0f,
+	-0.5, 0.5, 0.5, 0,0,1, 1.0f, 1.0f,
+	-0.5, 0.5,-0.5, 0,0,1, 0.0f, 1.0f,
 
-     0.5,-0.5,-0.5, 1,1,0,
-     0.5, 0.5, 0.5, 1,1,0,
-     0.5,-0.5, 0.5, 1,1,0,
+	0.5,-0.5,-0.5, 1,1,0, 0.0f, 0.0f,
+	0.5, 0.5, 0.5, 1,1,0, 1.0f, 1.0f,
+	0.5,-0.5, 0.5, 1,1,0, 1.0f, 0.0f,
 
-     0.5,-0.5,-0.5, 1,1,0,
-     0.5, 0.5,-0.5, 1,1,0,
-     0.5, 0.5, 0.5, 1,1,0,
+	0.5,-0.5,-0.5, 1,1,0, 0.0f, 0.0f,
+	0.5, 0.5,-0.5, 1,1,0, 0.0f, 1.0f,
+	0.5, 0.5, 0.5, 1,1,0, 1.0f, 1.0f,
 
-    -0.5, 0.5,-0.5, 0,1,1,
-    -0.5, 0.5, 0.5, 0,1,1,
-     0.5, 0.5, 0.5, 0,1,1,
+	-0.5, 0.5,-0.5, 0,1,1, 0.0f, 0.0f,
+	-0.5, 0.5, 0.5, 0,1,1, 0.0f, 1.0f,
+	0.5, 0.5, 0.5, 0,1,1, 1.0f, 1.0f,
 
-    -0.5, 0.5,-0.5, 0,1,1,
-     0.5, 0.5, 0.5, 0,1,1,
-     0.5, 0.5,-0.5, 0,1,1,
+	-0.5, 0.5,-0.5, 0,1,1, 0.0f, 0.0f,
+	0.5, 0.5, 0.5, 0,1,1, 1.0f, 1.0f,
+	0.5, 0.5,-0.5, 0,1,1, 1.0f, 0.0f,
 
-    -0.5,-0.5,-0.5, 1,0,1,
-     0.5,-0.5, 0.5, 1,0,1,
-    -0.5,-0.5, 0.5, 1,0,1,
+	-0.5,-0.5,-0.5, 1,0,1, 0.0f, 0.0f,
+	0.5,-0.5, 0.5, 1,0,1, 1.0f, 1.0f,
+	-0.5,-0.5, 0.5, 1,0,1, 0.0f, 1.0f,
 
-    -0.5,-0.5,-0.5, 1,0,1,
-     0.5,-0.5,-0.5, 1,0,1,
-     0.5,-0.5, 0.5, 1,0,1,
+	-0.5,-0.5,-0.5, 1,0,1, 0.0f, 0.0f,
+	0.5,-0.5,-0.5, 1,0,1, 1.0f, 0.0f,
+	0.5,-0.5, 0.5, 1,0,1, 1.0f, 1.0f,
     };
 
 	GLuint VBO, VAO;
@@ -278,11 +333,15 @@ int setupGeometry()
 
 	glBindVertexArray(VAO);
 	
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
 	glEnableVertexAttribArray(0);
 
-	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(GLfloat), (GLvoid*)(3*sizeof(GLfloat)));
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(3*sizeof(GLfloat)));
 	glEnableVertexAttribArray(1);
+
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,8 * sizeof(GLfloat),(GLvoid*)(6*sizeof(GLfloat)));
+	glEnableVertexAttribArray(2);
+
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	glBindVertexArray(0);
