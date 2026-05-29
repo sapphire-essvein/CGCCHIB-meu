@@ -1,10 +1,10 @@
+#include "loadSimpleOBJ.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
- 
- 
+
 using namespace std;
 
 // GLAD
@@ -18,12 +18,6 @@ using namespace std;
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-struct Mesh 
-{
-    GLuint VAO; 
-    string textureFile;
-};
-
 int loadSimpleOBJ(string filePATH, int &nVertices)
  {
     std::vector<glm::vec3> vertices;
@@ -31,7 +25,6 @@ int loadSimpleOBJ(string filePATH, int &nVertices)
     std::vector<glm::vec3> normals;
     std::vector<GLfloat> vBuffer;
     glm::vec3 color = glm::vec3(1.0, 0.0, 0.0);
-    string textureFile = "";
 
     std::ifstream arqEntrada(filePATH.c_str());
     if (!arqEntrada.is_open()) 
@@ -85,33 +78,9 @@ int loadSimpleOBJ(string filePATH, int &nVertices)
                 vBuffer.push_back(color.b);
                 vBuffer.push_back(texCoords[ti].x);
                 vBuffer.push_back(texCoords[ti].y);
-            }
-        }
-        else if (word == "mtllib")
-        {
-            string mtlFile;
-            ssline >> mtlFile;
-            std::ifstream mtlEntrada(mtlFile.c_str());
-
-            if (mtlEntrada.is_open())
-            {
-                string mtlLine;
-                while (getline(mtlEntrada, mtlLine))
-                {
-                    std::istringstream ssmtl(mtlLine);
-                    string mtlWord;
-
-                    ssmtl >> mtlWord;
-
-                    if (mtlWord == "map_Kd")
-                    {
-                        ssmtl >> textureFile;
-
-                        std::cout << "Textura encontrada: " << textureFile << std::endl;
-                    }
-                }
-
-                mtlEntrada.close();
+                vBuffer.push_back(normals[ni].x);
+                vBuffer.push_back(normals[ni].y);
+                vBuffer.push_back(normals[ni].z);
             }
         }
     }
@@ -120,29 +89,29 @@ int loadSimpleOBJ(string filePATH, int &nVertices)
 
     std::cout << "Gerando o buffer de geometria..." << std::endl;
     GLuint VBO, VAO;
-    glGenBuffers(1, &VBO);
-
     glGenVertexArrays(1, &VAO);
     glBindVertexArray(VAO);
 
+    glGenBuffers(1, &VBO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, vBuffer.size() * sizeof(GLfloat), vBuffer.data(), GL_STATIC_DRAW);
-    
-    
-    
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
+        
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (GLvoid*)0);
     glEnableVertexAttribArray(0);
 
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
     glEnableVertexAttribArray(1);
 
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,8 * sizeof(GLfloat),(GLvoid*)(6 * sizeof(GLfloat)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GLfloat)));
     glEnableVertexAttribArray(2);
+
+    glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11 * sizeof(GLfloat), (GLvoid*)(8 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(3);
     
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
-	nVertices = vBuffer.size() / 8;  // x, y, z, r, g, b (valores atualmente armazenados por vértice)
+	nVertices = vBuffer.size() / 11;  // x, y, z, r, g, b (valores atualmente armazenados por vértice)
 
     return VAO;
 }
