@@ -18,6 +18,8 @@ using namespace std;
 #include <glm/gtc/type_ptr.hpp>
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
+void mouse_callback(GLFWwindow* window, double xpos, double ypos);
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 
 int setupShader();
 
@@ -30,6 +32,8 @@ const GLchar* vertexShaderSource = "#version 450\n"
 "layout (location = 3) in vec3 normal;\n"
 
 "uniform mat4 model;\n"
+"uniform mat4 view;\n"
+"uniform mat4 projection;\n"
 
 "out vec2 TexCoord;\n"
 "out vec3 FragPos;\n"
@@ -38,7 +42,7 @@ const GLchar* vertexShaderSource = "#version 450\n"
 
 "void main()\n"
 "{\n"
-"   gl_Position = model * vec4(position, 1.0);\n"
+"   gl_Position = projection * view * model * vec4(position, 1.0);\n"
 "   FragPos = vec3(model * vec4(position, 1.0));\n"
 "   Normal = mat3(model) * normal;\n"
 "   ObjectColor = color;\n"
@@ -101,6 +105,44 @@ glm::vec3 keyLight;
 glm::vec3 fillLight;
 glm::vec3 backLight;
 
+glm::vec3 cameraPos = glm::vec3(0.0f, 0.0f, 3.0f);
+glm::vec3 cameraFront = glm::vec3(0.0f, 0.0f, -1.0f);
+glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
+
+bool firstMouse = true;
+
+float lastX = WIDTH / 2.0f;
+float lastY = HEIGHT / 2.0f;
+
+float yaw   = -90.0f;
+float pitch = 0.0f;
+
+float fov = 45.0f;
+
+float deltaTime = 0.0f;
+float lastFrame = 0.0f;
+
+void processInput(GLFWwindow* window)
+{
+    float cameraSpeed = 2.5f * deltaTime;
+
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        cameraPos += cameraFront * cameraSpeed;
+
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+        cameraPos -= cameraFront * cameraSpeed;
+
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+        cameraPos -= glm::normalize(
+            glm::cross(cameraFront, cameraUp)
+        ) * cameraSpeed;
+
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+        cameraPos += glm::normalize(
+            glm::cross(cameraFront, cameraUp)
+        ) * cameraSpeed;
+}
+
 int main()
 {
     glfwInit();
@@ -108,6 +150,10 @@ int main()
     GLFWwindow* window = glfwCreateWindow(WIDTH,HEIGHT,"Ola 3D -- Lucas!",nullptr,nullptr);
 
     glfwMakeContextCurrent(window);
+
+    glfwSetCursorPosCallback(window, mouse_callback);
+    glfwSetScrollCallback(window, scroll_callback);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     glfwSetKeyCallback(window, key_callback);
 
@@ -133,17 +179,21 @@ int main()
 	GLuint VAO = loadSimpleOBJ("../assets/Modelos3D/Suzanne.obj", nVertices);
 
     glUseProgram(shaderID);
-	glUniform1i(glGetUniformLocation(shaderID, "texture1"), 0);
+
+   	glUniform1i(glGetUniformLocation(shaderID, "texture1"), 0);
 
 	GLint lightPosLoc =	glGetUniformLocation(shaderID, "lightPos");
-
 	GLint lightColorLoc = glGetUniformLocation(shaderID, "lightColor");
-
 	GLint lightIntensityLoc = glGetUniformLocation(shaderID, "lightIntensity");
-
 	GLint lightEnabledLoc =	glGetUniformLocation(shaderID, "lightEnabled");
 
     GLint modelLoc = glGetUniformLocation(shaderID, "model");
+    GLint viewLoc = glGetUniformLocation(shaderID, "view");
+    GLint projLoc = glGetUniformLocation(shaderID, "projection");
+
+    glm::mat4 projection = glm::perspective(glm::radians(fov), (float)WIDTH / HEIGHT, 0.1f, 100.0f);
+
+    glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
     glEnable(GL_DEPTH_TEST); 
 
@@ -184,7 +234,15 @@ int main()
 
     while (!glfwWindowShouldClose(window))
     {
+        float currentFrame = glfwGetTime();
+
+        deltaTime = currentFrame - lastFrame;
+
+        lastFrame = currentFrame;
+
         glfwPollEvents();
+
+        processInput(window);
 
         glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -211,6 +269,9 @@ int main()
 		glUniform3fv(lightColorLoc, 3, glm::value_ptr(lightColors[0]));
 		glUniform1fv(lightIntensityLoc, 3, intensities);
 		glUniform1iv(lightEnabledLoc, 3, (int*)lightsEnabled);
+
+        glm::mat4 view = glm::lookAt(cameraPos, cameraPos + cameraFront, cameraUp);
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
         for (auto& suzannePos : suzanne)
         {
@@ -284,10 +345,10 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 
     float step = 0.1f;
 
-    if (key == GLFW_KEY_W) position.z -= step;
-    if (key == GLFW_KEY_S) position.z += step;
-    if (key == GLFW_KEY_A) position.x -= step;
-    if (key == GLFW_KEY_D) position.x += step;
+    if (key == GLFW_KEY_UP) position.z -= step;
+    if (key == GLFW_KEY_DOWN) position.z += step;
+    if (key == GLFW_KEY_LEFT) position.x -= step;
+    if (key == GLFW_KEY_RIGHT) position.x += step;
     if (key == GLFW_KEY_I) position.y += step;
     if (key == GLFW_KEY_J) position.y -= step;
 
@@ -307,6 +368,51 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
 
 	if (key == GLFW_KEY_3 && action == GLFW_PRESS)
 		lightsEnabled[2] = !lightsEnabled[2];
+}
+
+void mouse_callback(GLFWwindow* window, double xpos, double ypos)
+{
+    if(firstMouse){
+        lastX = xpos;
+        lastY = ypos;
+        firstMouse = false;
+    }
+
+    float xoffset = xpos - lastX;
+    float yoffset = lastY - ypos;
+    lastX = xpos;
+    lastY = ypos;
+
+    float sensitivity = 0.05;
+    xoffset *= sensitivity;
+    yoffset *= sensitivity;
+
+    yaw += xoffset;
+    pitch += yoffset;
+
+    if(pitch > 89.0f)
+        pitch = 89.0f;
+    if(pitch < -89.0f)
+        pitch = -89.0f;
+
+    glm::vec3 front;
+    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front.y = sin(glm::radians(pitch));
+    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    cameraFront = glm::normalize(front);
+    glm::vec3 right = glm::normalize(glm::cross(cameraFront,
+    glm::vec3(0.0,1.0,0.0)));
+    cameraUp = glm::normalize(glm::cross(right, cameraFront));
+}
+
+void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
+{
+    if(fov >= 1.0f && fov <= 45.0f)
+        fov -= yoffset;
+    if(fov <= 1.0f)
+        fov = 1.0f;
+    if(fov >= 45.0f)
+        fov = 45.0f;
 }
 
 int setupShader()
