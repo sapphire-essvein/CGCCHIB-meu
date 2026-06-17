@@ -21,6 +21,7 @@ using namespace std;
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+void loadTrajectory(const std::string& filename, std::vector<glm::vec3>& points);
 
 int setupShader();
 
@@ -91,15 +92,15 @@ const GLchar* fragmentShaderSource = "#version 450\n"
 GLuint texture;
 
 bool rotateX = false, rotateY = false, rotateZ = false;
-bool lightsEnabled[3] = { true, true, true };
+int lightsEnabled[3] = { 1, 1, 1 };
 
 glm::vec3 position(0.0f, 0.0f, 0.0f);
 float scale = 1.0f;
 
 std::vector<glm::vec3> suzanne = {
     glm::vec3(0,0,0),
-    glm::vec3(2,0,0),
-    glm::vec3(-2,0,0)
+    glm::vec3(3,0,0),
+    glm::vec3(-3,0,0)
 };
 
 glm::vec3 keyLight;
@@ -113,6 +114,10 @@ float lastY = HEIGHT / 2.0f;
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
+
+int currentPoint = 0;
+float movementSpeed = 1.0f;
+bool trajetoriaAtiva = false;
 
 Camera camera;
 
@@ -154,6 +159,10 @@ int main()
 
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
+
+    std::vector<glm::vec3> trajetoria;
+
+    loadTrajectory("../assets/trajetoria.txt",trajetoria);
 
     glViewport(0, 0, width, height);
 
@@ -228,7 +237,7 @@ int main()
 
         processInput(window);
 
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -246,13 +255,13 @@ int main()
 			glm::vec3(1.0f, 1.0f, 1.0f)  // back
 			};
 
-		float intensities[3] = {1.0f, 0.5f, 0.8f};
+		float intensities[3] = {1.0f, 0.5f, 1.0f};
 			//principal, preenchimento e fundo
 
 		glUniform3fv(lightPosLoc, 3, glm::value_ptr(lightPositions[0]));
 		glUniform3fv(lightColorLoc, 3, glm::value_ptr(lightColors[0]));
 		glUniform1fv(lightIntensityLoc, 3, intensities);
-		glUniform1iv(lightEnabledLoc, 3, (int*)lightsEnabled);
+		glUniform1iv(lightEnabledLoc, 3, lightsEnabled);
 
         glm::mat4 view = camera.GetViewMatrix();
 
@@ -282,6 +291,23 @@ int main()
 
 			glDrawArrays(GL_TRIANGLES, 0, nVertices);
 		}
+
+        if(trajetoriaAtiva &&!trajetoria.empty())
+        {
+            glm::vec3 target = trajetoria[currentPoint];
+
+            glm::vec3 direction = target - position;
+
+            float distance = glm::length(direction);
+
+            if(distance < 0.05f)
+            {   currentPoint++;
+                if(currentPoint >= trajetoria.size())
+                    currentPoint = 0;
+            }
+            else
+            {   position += glm::normalize(direction) * movementSpeed * deltaTime;}
+        }
 
         glBindVertexArray(0);
 
@@ -321,6 +347,11 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
         rotateX = false;
         rotateY = false;
         rotateZ = true;
+    }
+
+    if (key == GLFW_KEY_T && action == GLFW_PRESS)
+    {
+        trajetoriaAtiva = !trajetoriaAtiva;
     }
 
     float step = 0.1f;
@@ -371,6 +402,26 @@ void mouse_callback(GLFWwindow* window, double xpos, double ypos)
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
     camera.ProcessScroll((float)yoffset);
+}
+
+void loadTrajectory(const std::string& filename, std::vector<glm::vec3>& points)
+{
+    std::ifstream file(filename);
+
+    if(!file.is_open())
+    {
+        std::cout << "Erro ao abrir trajetória\n";
+        return;
+    }
+
+    float x, y, z;
+
+    while(file >> x >> y >> z)
+    {
+        points.push_back(glm::vec3(x,y,z));
+    }
+
+    file.close();
 }
 
 int setupShader()

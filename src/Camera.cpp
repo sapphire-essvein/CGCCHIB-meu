@@ -46,7 +46,7 @@ Camera::Camera()
 
 void Camera::ProcessKeyboard(bool forward, bool backward, bool left, bool right, float deltaTime)
 {
-    float speed = 2.5f * deltaTime;
+    float speed = 10.0f * deltaTime;
 
     if(forward)
         Position += Front * speed;
