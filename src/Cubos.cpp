@@ -21,8 +21,9 @@ using namespace std;
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
-void loadTrajectory(const std::string& filename, std::vector<glm::vec3>& points);
-
+void processInput(GLFWwindow* window);
+void lerTrajetoria(const std::string& filename, std::vector<glm::vec3>& points);
+glm::vec3 Bezier(float t, const std::vector<glm::vec3>& p);
 int setupShader();
 
 const GLuint WIDTH = 1000, HEIGHT = 1000;
@@ -62,6 +63,12 @@ const GLchar* fragmentShaderSource = "#version 450\n"
 "uniform float lightIntensity[3];\n"
 "uniform bool lightEnabled[3];\n"
 "uniform sampler2D texture1;\n"
+"uniform bool useMaterial;\n"
+"uniform vec3 materialKa;\n"
+"uniform vec3 materialKd;\n"
+"uniform vec3 materialKs;\n"
+"uniform float materialNs;\n"
+"uniform vec3 viewPos;\n"
 
 "out vec4 color;\n"
 
@@ -81,21 +88,54 @@ const GLchar* fragmentShaderSource = "#version 450\n"
         "float distance = length(lightPos[i] - FragPos);\n"
         "float attenuation = 1.0 / (1.0 + 0.2 * distance * distance);\n"
         "diffuse *= attenuation;\n"
-        "finalLight += diffuse;\n"
+
+        "vec3 viewDir = normalize(viewPos - FragPos);\n"
+
+        "vec3 reflectDir = reflect(-lightDir, norm);\n"
+
+        "float spec = pow(max(dot(viewDir, reflectDir), 0.0),materialNs);\n"
+
+        "vec3 specular = materialKs * spec * lightColor[i] * lightIntensity[i];\n"
+        "specular *= attenuation;\n"
+
+        "finalLight += diffuse + specular;\n"
     "}\n"
 
 	"vec3 texColor = texture(texture1, TexCoord).rgb;\n"
-	"vec3 result = finalLight * texColor;\n"
+	"vec3 surfaceColor = texColor;\n"
+    "if(useMaterial)\n"
+    "{\n"
+        "surfaceColor = materialKd;\n"
+    "}\n"
+    "else\n"
+    "{\n"
+        "surfaceColor = texture(texture1, TexCoord).rgb;\n"
+    "}\n"
+
+    "vec3 ambient = materialKa * 0.2;\n"
+
+    "vec3 result = (finalLight + ambient) * surfaceColor;\n"
     "color = vec4(result, 1.0);\n"
 "}\n\0";
 
 GLuint texture;
+bool usarMaterial = false;
 
-bool rotateX = false, rotateY = false, rotateZ = false;
-int lightsEnabled[3] = { 1, 1, 1 };
+int luzesAtivas[3] = { 1, 1, 1 };
+float intensidades[3] = {1.0f, 0.5f, 1.0f};
+glm::vec3 luzPrincipal;
+glm::vec3 luzPreenchimento;
+glm::vec3 luzFundo;
 
-glm::vec3 position(0.0f, 0.0f, 0.0f);
-float scale = 1.0f;
+std::vector<glm::vec3> posicoes = {
+    glm::vec3(0.0f),
+    glm::vec3(0.0f),
+    glm::vec3(0.0f)
+};
+
+std::vector<float> escalas = {1.0f, 1.0f, 1.0f};
+
+std::vector<int> rotacao = {0, 0, 0};
 
 std::vector<glm::vec3> suzanne = {
     glm::vec3(0,0,0),
@@ -103,34 +143,23 @@ std::vector<glm::vec3> suzanne = {
     glm::vec3(-3,0,0)
 };
 
-glm::vec3 keyLight;
-glm::vec3 fillLight;
-glm::vec3 backLight;
+int suzanneSelecionada = 0;
 
-bool firstMouse = true;
+bool mouse = true;
 
-float lastX = WIDTH / 2.0f;
-float lastY = HEIGHT / 2.0f;
+float ultimoX = WIDTH / 2.0f;
+float ultimoY = HEIGHT / 2.0f;
 
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
 
-int currentPoint = 0;
-float movementSpeed = 1.0f;
+int localAtual = 0;
+float velocidade = 1.0f;
 bool trajetoriaAtiva = false;
+float bezierT = 0.0f;
+bool indo = true;
 
 Camera camera;
-
-void processInput(GLFWwindow* window)
-{
-    camera.ProcessKeyboard(
-        glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS,
-        glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS,
-        glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS,
-        glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS,
-        deltaTime
-    );
-}
 
 int main()
 {
@@ -162,7 +191,7 @@ int main()
 
     std::vector<glm::vec3> trajetoria;
 
-    loadTrajectory("../assets/trajetoria.txt",trajetoria);
+    lerTrajetoria("../assets/trajetoria.txt",trajetoria);
 
     glViewport(0, 0, width, height);
 
@@ -170,6 +199,23 @@ int main()
 
 	int nVertices;
 	GLuint VAO = loadSimpleOBJ("../assets/Modelos3D/Suzanne.obj", nVertices);
+    std::cout << "Ka: "
+          << material.Ka.r << " "
+          << material.Ka.g << " "
+          << material.Ka.b << std::endl;
+
+    std::cout << "Kd: "
+            << material.Kd.r << " "
+            << material.Kd.g << " "
+            << material.Kd.b << std::endl;
+
+    std::cout << "Ks: "
+            << material.Ks.r << " "
+            << material.Ks.g << " "
+            << material.Ks.b << std::endl;
+
+    std::cout << "Ns: "
+            << material.Ns << std::endl;
 
     glUseProgram(shaderID);
 
@@ -183,6 +229,13 @@ int main()
     GLint modelLoc = glGetUniformLocation(shaderID, "model");
     GLint viewLoc = glGetUniformLocation(shaderID, "view");
     GLint projLoc = glGetUniformLocation(shaderID, "projection");
+
+    GLint useMaterialLoc = glGetUniformLocation(shaderID, "useMaterial");
+    GLint kaLoc = glGetUniformLocation(shaderID, "materialKa");
+    GLint kdLoc = glGetUniformLocation(shaderID, "materialKd");
+    GLint ksLoc = glGetUniformLocation(shaderID, "materialKs");
+    GLint nsLoc = glGetUniformLocation(shaderID, "materialNs");
+    GLint viewPosLoc = glGetUniformLocation(shaderID, "viewPos");
 
     glm::mat4 projection = glm::perspective(glm::radians(camera.Fov), (float)WIDTH / HEIGHT, 0.1f, 100.0f);
 
@@ -243,43 +296,47 @@ int main()
 
         float angle = (GLfloat)glfwGetTime();
 
-		glm::vec3 mainObjectPos = suzanne[0] + position;
-		keyLight  = mainObjectPos + glm::vec3( 2.0f * scale, 2.0f * scale, 2.0f * scale);
-		fillLight = mainObjectPos + glm::vec3(-2.0f * scale, 1.0f * scale, 2.0f * scale);
-		backLight = mainObjectPos + glm::vec3( 0.0f, 1.0f * scale, -3.0f * scale);
+		glm::vec3 mainObjectPos = suzanne[suzanneSelecionada] + posicoes[suzanneSelecionada];
+		luzPrincipal  = glm::vec3( 2.0f, 2.0f, 2.0f);
+        luzPreenchimento = glm::vec3(-2.0f, 1.0f, 2.0f);
+        luzFundo = glm::vec3( 0.0f, 1.0f,-3.0f);
 
-		glm::vec3 lightPositions[3] = {keyLight, fillLight, backLight};
+		glm::vec3 lightposicoes[3] = {luzPrincipal, luzPreenchimento, luzFundo};
 		glm::vec3 lightColors[3] = {
 			glm::vec3(1.0f, 1.0f, 1.0f), // key
 			glm::vec3(1.0f, 1.0f, 1.0f), // fill
 			glm::vec3(1.0f, 1.0f, 1.0f)  // back
 			};
 
-		float intensities[3] = {1.0f, 0.5f, 1.0f};
-			//principal, preenchimento e fundo
-
-		glUniform3fv(lightPosLoc, 3, glm::value_ptr(lightPositions[0]));
+		glUniform3fv(lightPosLoc, 3, glm::value_ptr(lightposicoes[0]));
 		glUniform3fv(lightColorLoc, 3, glm::value_ptr(lightColors[0]));
-		glUniform1fv(lightIntensityLoc, 3, intensities);
-		glUniform1iv(lightEnabledLoc, 3, lightsEnabled);
+		glUniform1fv(lightIntensityLoc, 3, intensidades);
+		glUniform1iv(lightEnabledLoc, 3, luzesAtivas);
+
+        glUniform1i(useMaterialLoc, usarMaterial);
+        glUniform3fv(kaLoc, 1, glm::value_ptr(material.Ka));
+        glUniform3fv(kdLoc, 1, glm::value_ptr(material.Kd));
+        glUniform3fv(ksLoc, 1, glm::value_ptr(material.Ks));
+        glUniform3fv(viewPosLoc, 1, glm::value_ptr(camera.Position));
+        glUniform1f(nsLoc, material.Ns);
 
         glm::mat4 view = camera.GetViewMatrix();
 
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
-        for (auto& suzannePos : suzanne)
+        for (int i = 0; i < suzanne.size(); i++)
         {
             glm::mat4 model = glm::mat4(1.0f);
 
-            model = glm::translate(model, suzannePos + position);
+            model = glm::translate(model, suzanne[i] + posicoes[i]);
 
-            model = glm::scale(model, glm::vec3(scale));
+            model = glm::scale(model, glm::vec3(escalas[i]));
 
-            if (rotateX)
+            if (rotacao[i] == 1)
                 model = glm::rotate(model, angle, glm::vec3(1,0,0));
-            else if (rotateY)
+            else if (rotacao[i] == 2)
                 model = glm::rotate(model, angle, glm::vec3(0,1,0));
-            else if (rotateZ)
+            else if (rotacao[i] == 3)
                 model = glm::rotate(model, angle, glm::vec3(0,0,1));
                     
             glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
@@ -292,21 +349,27 @@ int main()
 			glDrawArrays(GL_TRIANGLES, 0, nVertices);
 		}
 
-        if(trajetoriaAtiva &&!trajetoria.empty())
+        /*Trajetoria de Bezier, indo e voltando*/
+        if(trajetoriaAtiva && trajetoria.size() >= 4)
         {
-            glm::vec3 target = trajetoria[currentPoint];
-
-            glm::vec3 direction = target - position;
-
-            float distance = glm::length(direction);
-
-            if(distance < 0.05f)
-            {   currentPoint++;
-                if(currentPoint >= trajetoria.size())
-                    currentPoint = 0;
-            }
+            if(indo)
+                bezierT += velocidade * deltaTime * 0.2f;
             else
-            {   position += glm::normalize(direction) * movementSpeed * deltaTime;}
+                bezierT -= velocidade * deltaTime * 0.2f;
+
+            if(bezierT >= 1.0f)
+            {
+                bezierT = 1.0f;
+                indo = false;
+            }
+
+            if(bezierT <= 0.0f)
+            {
+                bezierT = 0.0f;
+                indo = true;
+            }
+
+            posicoes[suzanneSelecionada] = Bezier(bezierT, trajetoria);
         }
 
         glBindVertexArray(0);
@@ -321,80 +384,149 @@ int main()
     return 0;
 }
 
+//Função de cada tecla
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode)
 {
+    //Fecha o programa
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
     {
         glfwSetWindowShouldClose(window, GL_TRUE);
     }
 
-    if (key == GLFW_KEY_X && action == GLFW_PRESS)
-    {
-        rotateX = true;
-        rotateY = false;
-        rotateZ = false;
-    }
-
-    if (key == GLFW_KEY_Y && action == GLFW_PRESS)
-    {
-        rotateX = false;
-        rotateY = true;
-        rotateZ = false;
-    }
-
+    //Rotações
     if (key == GLFW_KEY_Z && action == GLFW_PRESS)
     {
-        rotateX = false;
-        rotateY = false;
-        rotateZ = true;
+        rotacao[suzanneSelecionada] = 1;
     }
 
+    if (key == GLFW_KEY_X && action == GLFW_PRESS)
+    {
+        rotacao[suzanneSelecionada] = 2;
+    }
+
+    if (key == GLFW_KEY_C && action == GLFW_PRESS)
+    {
+        rotacao[suzanneSelecionada] = 3;
+    }
+
+    if (key == GLFW_KEY_V && action == GLFW_PRESS)
+    {
+        rotacao[suzanneSelecionada] = 0;
+    }
+
+    //Ativar e desativar trajetoria
     if (key == GLFW_KEY_T && action == GLFW_PRESS)
     {
         trajetoriaAtiva = !trajetoriaAtiva;
     }
 
+    //Mover Suzanne
     float step = 0.1f;
-
-    if (key == GLFW_KEY_UP) position.z -= step;
-    if (key == GLFW_KEY_DOWN) position.z += step;
-    if (key == GLFW_KEY_LEFT) position.x -= step;
-    if (key == GLFW_KEY_RIGHT) position.x += step;
-    if (key == GLFW_KEY_I) position.y += step;
-    if (key == GLFW_KEY_J) position.y -= step;
-
-    if (key == GLFW_KEY_LEFT_BRACKET) scale -= 0.1f;
-    if (key == GLFW_KEY_RIGHT_BRACKET) scale += 0.1f;
-
-    if (key == GLFW_KEY_SPACE && action == GLFW_PRESS)
+    if (key == GLFW_KEY_UP) 
     {
-        suzanne.push_back(position);
+        posicoes[suzanneSelecionada].y += step;
     }
 
+    if (key == GLFW_KEY_DOWN)
+    {
+        posicoes[suzanneSelecionada].y -= step;
+    } 
+
+    if (key == GLFW_KEY_LEFT) 
+    {
+        posicoes[suzanneSelecionada].x -= step;
+    }
+
+    if (key == GLFW_KEY_RIGHT) 
+    {
+        posicoes[suzanneSelecionada].x += step;
+    }
+
+    if (key == GLFW_KEY_F) 
+    {
+        posicoes[suzanneSelecionada].z += step;
+    }
+
+    if (key == GLFW_KEY_G) 
+    {
+        posicoes[suzanneSelecionada].z -= step;
+    }
+
+    //Controlar tamanho
+    if (key == GLFW_KEY_LEFT_BRACKET) 
+    {
+        escalas[suzanneSelecionada] -= 0.1f;
+    }
+    if (key == GLFW_KEY_RIGHT_BRACKET) 
+    {
+        escalas[suzanneSelecionada] += 0.1f;
+    }
+
+    //Selecionar a Suzanne
 	if (key == GLFW_KEY_1 && action == GLFW_PRESS)
-    	lightsEnabled[0] = !lightsEnabled[0];
+    {
+        suzanneSelecionada = 2;
+    }
 
 	if (key == GLFW_KEY_2 && action == GLFW_PRESS)
-		lightsEnabled[1] = !lightsEnabled[1];
+	{
+        suzanneSelecionada = 0;
+    }	
 
 	if (key == GLFW_KEY_3 && action == GLFW_PRESS)
-		lightsEnabled[2] = !lightsEnabled[2];
-}
-
-void mouse_callback(GLFWwindow* window, double xpos, double ypos)
-{
-    if(firstMouse)
-    {
-        lastX = xpos;
-        lastY = ypos;
-        firstMouse = false;
+	{
+        suzanneSelecionada = 1;
     }
 
-    float xoffset = xpos - lastX;
-    float yoffset = lastY - ypos;
+    //Controle de Luzes
+    if (key == GLFW_KEY_4 && action == GLFW_PRESS)
+    {
+        luzesAtivas[0] = !luzesAtivas[0];
+    }
 
-    lastX = xpos;
-    lastY = ypos;
+	if (key == GLFW_KEY_5 && action == GLFW_PRESS)
+	{
+        luzesAtivas[1] = !luzesAtivas[1];
+    }	
+
+	if (key == GLFW_KEY_6 && action == GLFW_PRESS)
+	{
+        luzesAtivas[2] = !luzesAtivas[2];
+    }
+
+    if (key == GLFW_KEY_MINUS){
+        for(int i = 0; i < 3; i++)
+            intensidades[i] -= 0.1f;
+    }
+
+    if (key == GLFW_KEY_EQUAL){
+        for(int i = 0; i < 3; i++)
+            intensidades[i] += 0.1f;
+    }
+
+    //Alterna entre material e textura
+    if(key == GLFW_KEY_M && action == GLFW_PRESS)
+    {
+        usarMaterial = !usarMaterial;
+    }
+    
+}
+
+//Funções de mouse para a camera conforme tutorial do moodle
+void mouse_callback(GLFWwindow* window, double xpos, double ypos)
+{
+    if(mouse)
+    {
+        ultimoX = xpos;
+        ultimoY = ypos;
+        mouse = false;
+    }
+
+    float xoffset = xpos - ultimoX;
+    float yoffset = ultimoY - ypos;
+
+    ultimoX = xpos;
+    ultimoY = ypos;
 
     camera.ProcessMouse(xoffset, yoffset);
 }
@@ -404,7 +536,20 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
     camera.ProcessScroll((float)yoffset);
 }
 
-void loadTrajectory(const std::string& filename, std::vector<glm::vec3>& points)
+//Função do movimento do teclado tambem conforme tutorial
+void processInput(GLFWwindow* window)
+{
+    camera.ProcessKeyboard(
+        glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS,
+        glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS,
+        glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS,
+        glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS,
+        deltaTime
+    );
+}
+
+//Função pra ler a trajetoria do arquivo
+void lerTrajetoria(const std::string& filename, std::vector<glm::vec3>& points)
 {
     std::ifstream file(filename);
 
@@ -424,6 +569,19 @@ void loadTrajectory(const std::string& filename, std::vector<glm::vec3>& points)
     file.close();
 }
 
+//Calculo de Bezier
+glm::vec3 Bezier(float t, const std::vector<glm::vec3>& p)
+{
+    float u = 1.0f - t;
+
+    return
+        u*u*u * p[0] +
+        3*u*u*t * p[1] +
+        3*u*t*t * p[2] +
+        t*t*t * p[3];
+}
+
+//Função para carregar os shaders
 int setupShader()
 {
     GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);

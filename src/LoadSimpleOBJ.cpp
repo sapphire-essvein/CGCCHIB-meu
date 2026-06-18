@@ -18,6 +18,8 @@ using namespace std;
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+Material material;
+
 int loadSimpleOBJ(string filePATH, int &nVertices)
  {
     std::vector<glm::vec3> vertices;
@@ -57,7 +59,43 @@ int loadSimpleOBJ(string filePATH, int &nVertices)
             glm::vec3 normal;
             ssline >> normal.x >> normal.y >> normal.z;
             normals.push_back(normal);
-        } 
+        }
+        else if (word == "mtllib")
+        {
+            std::string mtlFile;
+            ssline >> mtlFile;
+
+            std::ifstream mtl("../assets/Modelos3D/" + mtlFile);
+
+            std::string mtlLine;
+
+            while(std::getline(mtl, mtlLine))
+            {
+            std::istringstream mtlStream(mtlLine);
+            std::string mtlWord;
+            mtlStream >> mtlWord;
+
+            if(mtlWord == "Ka")
+                {
+                    mtlStream >> material.Ka.r >> material.Ka.g >> material.Ka.b;
+                }
+            else if(mtlWord == "Kd"){
+                {
+                    mtlStream >> material.Kd.r >> material.Kd.g >> material.Kd.b;                    
+                }
+            }
+            else if(mtlWord == "Ks"){
+                {
+                    mtlStream >> material.Ks.r >> material.Ks.g >> material.Ks.b;                    
+                }
+            }
+            else if(mtlWord == "Ns"){
+                {
+                    mtlStream >> material.Ns;                    
+                }
+            }
+            }
+        }
         else if (word == "f")
 		 {
             while (ssline >> word) 
