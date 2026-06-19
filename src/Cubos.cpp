@@ -5,19 +5,17 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
-
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 using namespace std;
 
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
+//Prototipos
 void key_callback(GLFWwindow* window, int key, int scancode, int action, int mode);
 void mouse_callback(GLFWwindow* window, double xpos, double ypos);
 void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
@@ -45,11 +43,11 @@ const GLchar* vertexShaderSource = "#version 450\n"
 
 "void main()\n"
 "{\n"
-"   gl_Position = projection * view * model * vec4(position, 1.0);\n"
-"   FragPos = vec3(model * vec4(position, 1.0));\n"
-"   Normal = mat3(model) * normal;\n"
-"   ObjectColor = color;\n"
-"	TexCoord = texCoord;\n"
+    "gl_Position = projection * view * model * vec4(position, 1.0);\n"
+    "FragPos = vec3(model * vec4(position, 1.0));\n"
+    "Normal = mat3(model) * normal;\n"
+    "ObjectColor = color;\n"
+    "TexCoord = texCoord;\n"
 "}\0";
 
 const GLchar* fragmentShaderSource = "#version 450\n"
@@ -83,9 +81,14 @@ const GLchar* fragmentShaderSource = "#version 450\n"
             "continue;\n"
 
         "vec3 lightDir = normalize(lightPos[i] - FragPos);\n"
+
+        "// Cálculo da iluminação difusa (Lei de Lambert)\n"
         "float diff = max(dot(norm, lightDir), 0.0);\n"
+
         "vec3 diffuse = diff * lightColor[i] * lightIntensity[i];\n"
         "float distance = length(lightPos[i] - FragPos);\n"
+
+        "// Atenuação da intensidade luminosa pela distância\n"
         "float attenuation = 1.0 / (1.0 + 0.2 * distance * distance);\n"
         "diffuse *= attenuation;\n"
 
@@ -93,6 +96,7 @@ const GLchar* fragmentShaderSource = "#version 450\n"
 
         "vec3 reflectDir = reflect(-lightDir, norm);\n"
 
+        "// Cálculo da reflexão especular (modelo de Phong)\n"
         "float spec = pow(max(dot(viewDir, reflectDir), 0.0),materialNs);\n"
 
         "vec3 specular = materialKs * spec * lightColor[i] * lightIntensity[i];\n"
@@ -112,13 +116,16 @@ const GLchar* fragmentShaderSource = "#version 450\n"
         "surfaceColor = texture(texture1, TexCoord).rgb;\n"
     "}\n"
 
+    "// Componente ambiente do material\n"
     "vec3 ambient = materialKa * 0.2;\n"
 
+    "// Resultado final da iluminação aplicada sobre a superfície\n"
     "vec3 result = (finalLight + ambient) * surfaceColor;\n"
     "color = vec4(result, 1.0);\n"
 "}\n\0";
 
 GLuint texture;
+GLuint cubeTextures[3];
 bool usarMaterial = false;
 
 int luzesAtivas[3] = { 1, 1, 1 };
@@ -127,31 +134,31 @@ glm::vec3 luzPrincipal;
 glm::vec3 luzPreenchimento;
 glm::vec3 luzFundo;
 
+std::vector<glm::vec3> cubos = {
+    glm::vec3(0.0f, 0.9f, 0.0f),
+    glm::vec3(3.0f, -0.6f, 0.0f),
+    glm::vec3(-3.0f, -2.1f, 0.0f)
+};
 std::vector<glm::vec3> posicoes = {
     glm::vec3(0.0f),
     glm::vec3(0.0f),
     glm::vec3(0.0f)
 };
-
+std::vector<glm::vec3> suzanne = {
+    glm::vec3(0.0f,3.0f,0.0f),
+    glm::vec3(3.0f,1.5f,0.0f),
+    glm::vec3(-3.0f,0.0f,0.0f)
+};
+int objetoSelecionado = 0;
 std::vector<float> escalas = {1.0f, 1.0f, 1.0f};
-
 std::vector<int> rotacao = {0, 0, 0};
 
-std::vector<glm::vec3> suzanne = {
-    glm::vec3(0,0,0),
-    glm::vec3(3,0,0),
-    glm::vec3(-3,0,0)
-};
-
-int suzanneSelecionada = 0;
-
 bool mouse = true;
-
 float ultimoX = WIDTH / 2.0f;
 float ultimoY = HEIGHT / 2.0f;
-
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
+Camera camera;
 
 int localAtual = 0;
 float velocidade = 1.0f;
@@ -159,21 +166,19 @@ bool trajetoriaAtiva = false;
 float bezierT = 0.0f;
 bool indo = true;
 
-Camera camera;
-
 int main()
 {
     glfwInit();
 
-    GLFWwindow* window = glfwCreateWindow(WIDTH,HEIGHT,"Ola 3D -- Lucas!",nullptr,nullptr);
+    GLFWwindow* window = glfwCreateWindow(WIDTH,HEIGHT,"Colocações das Suzannes",nullptr,nullptr);
 
     glfwMakeContextCurrent(window);
 
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
     glfwSetKeyCallback(window, key_callback);
+
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
@@ -182,40 +187,23 @@ int main()
 
     const GLubyte* renderer = glGetString(GL_RENDERER);
     const GLubyte* version = glGetString(GL_VERSION);
-
     cout << "Renderer: " << renderer << endl;
     cout << "OpenGL version supported " << version << endl;
 
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
+    glViewport(0, 0, width, height);
 
     std::vector<glm::vec3> trajetoria;
-
     lerTrajetoria("../assets/trajetoria.txt",trajetoria);
-
-    glViewport(0, 0, width, height);
 
     GLuint shaderID = setupShader();
 
 	int nVertices;
 	GLuint VAO = loadSimpleOBJ("../assets/Modelos3D/Suzanne.obj", nVertices);
-    std::cout << "Ka: "
-          << material.Ka.r << " "
-          << material.Ka.g << " "
-          << material.Ka.b << std::endl;
 
-    std::cout << "Kd: "
-            << material.Kd.r << " "
-            << material.Kd.g << " "
-            << material.Kd.b << std::endl;
-
-    std::cout << "Ks: "
-            << material.Ks.r << " "
-            << material.Ks.g << " "
-            << material.Ks.b << std::endl;
-
-    std::cout << "Ns: "
-            << material.Ns << std::endl;
+    int cubeVertices;
+    GLuint cubeVAO = loadSimpleOBJ("../assets/Modelos3D/Cube.obj", cubeVertices);
 
     glUseProgram(shaderID);
 
@@ -238,27 +226,22 @@ int main()
     GLint viewPosLoc = glGetUniformLocation(shaderID, "viewPos");
 
     glm::mat4 projection = glm::perspective(glm::radians(camera.Fov), (float)WIDTH / HEIGHT, 0.1f, 100.0f);
-
     glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
     glEnable(GL_DEPTH_TEST); 
 
 	glGenTextures(1, &texture);
-
 	glBindTexture(GL_TEXTURE_2D, texture);
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
 	int texWidth, texHeight, nrChannels;
 
 	stbi_set_flip_vertically_on_load(true);
 
 	unsigned char* data = stbi_load("../assets/Modelos3D/Suzanne.png", &texWidth, &texHeight, &nrChannels, 0);
-
 	if (data)
 		{GLenum format;
 		if (nrChannels == 1)
@@ -275,28 +258,80 @@ int main()
 	{
 		cout << "Erro ao carregar textura" << endl;
 	}
-
 	stbi_image_free(data);
+
+    glGenTextures(1, &cubeTextures[0]);
+    glBindTexture(GL_TEXTURE_2D, cubeTextures[0]);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    unsigned char* data1 = stbi_load("../assets/Modelos3D/Gold.png", &texWidth, &texHeight, &nrChannels, 4);
+    if (data1)
+		{GLenum format = GL_RGBA;
+
+		glTexImage2D(GL_TEXTURE_2D,	0, format, texWidth, texHeight,	0, format, GL_UNSIGNED_BYTE, data1);
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
+	else
+	{
+		cout << "Erro ao carregar textura" << endl;
+	}
+	stbi_image_free(data1);
+
+    glGenTextures(1, &cubeTextures[1]);
+    glBindTexture(GL_TEXTURE_2D, cubeTextures[1]);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    unsigned char* data2 = stbi_load("../assets/Modelos3D/Silver.png", &texWidth, &texHeight, &nrChannels, 4);
+    if (data2)
+		{GLenum format = GL_RGBA;
+
+		glTexImage2D(GL_TEXTURE_2D,	0, format, texWidth, texHeight,	0, format, GL_UNSIGNED_BYTE, data2);
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
+	else
+	{
+		cout << "Erro ao carregar textura" << endl;
+	}
+	stbi_image_free(data2);
+
+    glGenTextures(1, &cubeTextures[2]);
+    glBindTexture(GL_TEXTURE_2D, cubeTextures[2]);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    unsigned char* data3 = stbi_load("../assets/Modelos3D/Brick.png", &texWidth, &texHeight, &nrChannels, 4);
+    if (data3)
+		{GLenum format = GL_RGBA;
+
+		glTexImage2D(GL_TEXTURE_2D,	0, format, texWidth, texHeight,	0, format, GL_UNSIGNED_BYTE, data3);
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
+	else
+	{
+		cout << "Erro ao carregar textura" << endl;
+	}
+	stbi_image_free(data3);
 
     while (!glfwWindowShouldClose(window))
     {
         float currentFrame = glfwGetTime();
-
         deltaTime = currentFrame - lastFrame;
-
         lastFrame = currentFrame;
 
         glfwPollEvents();
-
         processInput(window);
 
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         float angle = (GLfloat)glfwGetTime();
 
-		glm::vec3 mainObjectPos = suzanne[suzanneSelecionada] + posicoes[suzanneSelecionada];
+		glm::vec3 mainObjectPos = suzanne[objetoSelecionado] + posicoes[objetoSelecionado];
 		luzPrincipal  = glm::vec3( 2.0f, 2.0f, 2.0f);
         luzPreenchimento = glm::vec3(-2.0f, 1.0f, 2.0f);
         luzFundo = glm::vec3( 0.0f, 1.0f,-3.0f);
@@ -317,11 +352,11 @@ int main()
         glUniform3fv(kaLoc, 1, glm::value_ptr(material.Ka));
         glUniform3fv(kdLoc, 1, glm::value_ptr(material.Kd));
         glUniform3fv(ksLoc, 1, glm::value_ptr(material.Ks));
-        glUniform3fv(viewPosLoc, 1, glm::value_ptr(camera.Position));
         glUniform1f(nsLoc, material.Ns);
 
-        glm::mat4 view = camera.GetViewMatrix();
+        glUniform3fv(viewPosLoc, 1, glm::value_ptr(camera.Position));
 
+        glm::mat4 view = camera.GetViewMatrix();
         glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
         for (int i = 0; i < suzanne.size(); i++)
@@ -343,13 +378,28 @@ int main()
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, texture);
-
             glBindVertexArray(VAO);
 
 			glDrawArrays(GL_TRIANGLES, 0, nVertices);
 		}
 
-        /*Trajetoria de Bezier, indo e voltando*/
+        for (int i = 0; i < cubos.size(); i++)
+        {
+            glm::mat4 model = glm::mat4(1.0f);
+
+            model = glm::translate(model, cubos[i]);
+            model = glm::scale(model, glm::vec3(1.0f));
+
+            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, cubeTextures[i]);
+
+            glBindVertexArray(cubeVAO);
+            glDrawArrays(GL_TRIANGLES, 0, cubeVertices);
+        }
+
+        //Trajetoria de Bezier, indo e voltando
         if(trajetoriaAtiva && trajetoria.size() >= 4)
         {
             if(indo)
@@ -369,7 +419,7 @@ int main()
                 indo = true;
             }
 
-            posicoes[suzanneSelecionada] = Bezier(bezierT, trajetoria);
+            posicoes[objetoSelecionado] = Bezier(bezierT, trajetoria);
         }
 
         glBindVertexArray(0);
@@ -396,22 +446,22 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     //Rotações
     if (key == GLFW_KEY_Z && action == GLFW_PRESS)
     {
-        rotacao[suzanneSelecionada] = 1;
+        rotacao[objetoSelecionado] = 1;
     }
 
     if (key == GLFW_KEY_X && action == GLFW_PRESS)
     {
-        rotacao[suzanneSelecionada] = 2;
+        rotacao[objetoSelecionado] = 2;
     }
 
     if (key == GLFW_KEY_C && action == GLFW_PRESS)
     {
-        rotacao[suzanneSelecionada] = 3;
+        rotacao[objetoSelecionado] = 3;
     }
 
     if (key == GLFW_KEY_V && action == GLFW_PRESS)
     {
-        rotacao[suzanneSelecionada] = 0;
+        rotacao[objetoSelecionado] = 0;
     }
 
     //Ativar e desativar trajetoria
@@ -424,58 +474,58 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action, int mod
     float step = 0.1f;
     if (key == GLFW_KEY_UP) 
     {
-        posicoes[suzanneSelecionada].y += step;
+        posicoes[objetoSelecionado].y += step;
     }
 
     if (key == GLFW_KEY_DOWN)
     {
-        posicoes[suzanneSelecionada].y -= step;
+        posicoes[objetoSelecionado].y -= step;
     } 
 
     if (key == GLFW_KEY_LEFT) 
     {
-        posicoes[suzanneSelecionada].x -= step;
+        posicoes[objetoSelecionado].x -= step;
     }
 
     if (key == GLFW_KEY_RIGHT) 
     {
-        posicoes[suzanneSelecionada].x += step;
+        posicoes[objetoSelecionado].x += step;
     }
 
     if (key == GLFW_KEY_F) 
     {
-        posicoes[suzanneSelecionada].z += step;
+        posicoes[objetoSelecionado].z += step;
     }
 
     if (key == GLFW_KEY_G) 
     {
-        posicoes[suzanneSelecionada].z -= step;
+        posicoes[objetoSelecionado].z -= step;
     }
 
     //Controlar tamanho
     if (key == GLFW_KEY_LEFT_BRACKET) 
     {
-        escalas[suzanneSelecionada] -= 0.1f;
+        escalas[objetoSelecionado] -= 0.1f;
     }
     if (key == GLFW_KEY_RIGHT_BRACKET) 
     {
-        escalas[suzanneSelecionada] += 0.1f;
+        escalas[objetoSelecionado] += 0.1f;
     }
 
     //Selecionar a Suzanne
 	if (key == GLFW_KEY_1 && action == GLFW_PRESS)
     {
-        suzanneSelecionada = 2;
+        objetoSelecionado = 2;
     }
 
 	if (key == GLFW_KEY_2 && action == GLFW_PRESS)
 	{
-        suzanneSelecionada = 0;
+        objetoSelecionado = 0;
     }	
 
 	if (key == GLFW_KEY_3 && action == GLFW_PRESS)
 	{
-        suzanneSelecionada = 1;
+        objetoSelecionado = 1;
     }
 
     //Controle de Luzes
@@ -572,13 +622,14 @@ void lerTrajetoria(const std::string& filename, std::vector<glm::vec3>& points)
 //Calculo de Bezier
 glm::vec3 Bezier(float t, const std::vector<glm::vec3>& p)
 {
-    float u = 1.0f - t;
+    glm::vec3 a = glm::mix(p[0], p[1], t);
+    glm::vec3 b = glm::mix(p[1], p[2], t);
+    glm::vec3 c = glm::mix(p[2], p[3], t);
 
-    return
-        u*u*u * p[0] +
-        3*u*u*t * p[1] +
-        3*u*t*t * p[2] +
-        t*t*t * p[3];
+    glm::vec3 d = glm::mix(a, b, t);
+    glm::vec3 e = glm::mix(b, c, t);
+
+    return glm::mix(d, e, t);
 }
 
 //Função para carregar os shaders

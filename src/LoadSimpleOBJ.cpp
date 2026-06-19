@@ -36,6 +36,8 @@ int loadSimpleOBJ(string filePATH, int &nVertices)
     }
 
     std::string line;
+
+    // Leitura do arquivo OBJ (vértices, textura, normais e faces)
     while (std::getline(arqEntrada, line)) 
 	{
         std::istringstream ssline(line);

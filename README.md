@@ -1,29 +1,12 @@
-# Computação Gráfica - Híbrido
+# Projeto de Computação Gráfica - Colocações das Suzannes
 
-Repositório de exemplos de códigos em C++ utilizando OpenGL moderna (3.3+) criado para a Atividade Acadêmica Computação Gráfica do curso de graduação em Ciência da Computação - modalidade híbrida - da Unisinos. Ele é estruturado para facilitar a organização dos arquivos e a compilação dos projetos utilizando CMake.
-
-## 📂 Estrutura do Repositório
-
-```plaintext
-📂 CGCCHibrido/
-├── 📂 include/               # Cabeçalhos e bibliotecas de terceiros
-│   ├── 📂 glad/              # Cabeçalhos da GLAD (OpenGL Loader)
-│   │   ├── glad.h
-│   │   ├── 📂 KHR/           # Diretório com cabeçalhos da Khronos (GLAD)
-│   │       ├── khrplatform.h
-├── 📂 common/                # Código reutilizável entre os projetos
-│   ├── glad.c                # Implementação da GLAD
-├── 📂 src/                   # Código-fonte dos exemplos e exercícios
-│   ├── Hello3D.cpp           # Exemplo básico de renderização com OpenGL
-│   ├── ...                   # Outros exemplos e exercícios futuros
-├── 📂 build/                 # Diretório gerado pelo CMake (não incluído no repositório)
-├── 📂 assets/                # diretório com modelos 3D, texturas, fontes etc
-├── 📄 CMakeLists.txt         # Configuração do CMake para compilar os projetos
-├── 📄 README.md              # Este arquivo, com a documentação do repositório
-├── 📄 GettingStarted.md      # Tutorial detalhado sobre como compilar usando o CMake
-```
-
-Siga as instruções detalhadas em [GettingStarted.md](GettingStarted.md) para configurar e compilar o projeto.
+## Dependências:
+Compilador C++
+OpenGL 4.5+
+GLFW 3
+GLAD
+GLM (OpenGL Mathematics)
+stb_image.h
 
 ## ⚠️ **IMPORTANTE: Baixar a GLAD Manualmente**
 Para que o projeto funcione corretamente, é necessário **baixar a GLAD manualmente** utilizando o **GLAD Generator**.
@@ -43,5 +26,35 @@ Após a geração, extraia os arquivos baixados e coloque-os nos diretórios cor
 - Copie **`khrplatform.h`** para `include/glad/KHR/`
 - Copie **`glad.c`** para `common/`
 
-🚨 **Sem esses arquivos, a compilação falhará!** É necessário colocar esses arquivos nos diretórios corretos, conforme a orientação acima.
+### Compilação e Execução
+As compilações desse projeto foram feitas utilizando o CMAKE.
+O projeto não depende de arquivos externos e deve compilar tranquilamente usando os arquivos atuais do repositorio contanto que estejam na mesma organiazação de pastas.
 
+Basta usar o CMAKE: Configure e depois dentro da pasta build usar o comando "cmake --build ." para criar o executavel que deve ter o nome de Cubos.exe, executando ele com o comando ".\Cubos.exe".
+
+### Assets
+#### Modelos
+Suzanne.obj: Modelo padrão de teste incluído nativamente no software Blender.
+Cube.obj: Modelo de cubo padrão gerado no Blender.
+
+OBS: Todos os obj foram pegos do repositório do professor da disciplina.
+
+#### Texturas
+Suzanne.png: Gerada no software Blender via UV Unwrapping e Texture Painting básica.
+Gold.png: Pego deste site https://gallery.yopriceville.com/Backgrounds/Gold_Metal_Background
+Silver.png: Pego deste site https://gallery.yopriceville.com/Backgrounds/Silver_Metal_Background
+Brick.png: Pego deste site https://gallery.yopriceville.com/Backgrounds/Brick_Wall_Background
+
+OBS: Textura da Suzanne também foi pega do repositório do professor da disciplina.
+
+### Referências
+Materiais do Moodle fornecidos pelo professor, como o arquivo tutorial da camera do M5:
+M5 Apresentação em PDF | Câmera sintética Arquivo
+
+Tutorial para calculo de Bezier: https://javascript.info/bezier-curve
+
+Funções GL: OpenGL API Documentation khronos.org/registry/OpenGL-Refpages
+
+Transformações de matriz: GLM Documentation (G-Truc) glm.g-truc.net
+
+Callbacks de mouse e teclado: GLFW Documentation glfw.org/docs
